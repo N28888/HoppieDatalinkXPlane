@@ -46,6 +46,9 @@ jobs:
 
   macos:
     runs-on: macos-15-intel
+    env:
+      # Step conditions cannot access secrets directly; expose only presence.
+      HAS_MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +71,7 @@ jobs:
           [[ "$ARCHS" == *x86_64* && "$ARCHS" == *arm64* ]]
 
       - name: Import optional Developer ID certificate
-        if: ${{ secrets.MACOS_CERTIFICATE != '' }}
+        if: ${{ env.HAS_MACOS_CERTIFICATE == 'true' }}
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
@@ -83,7 +86,7 @@ jobs:
           security list-keychain -d user -s build.keychain
 
       - name: Optional Developer ID signing
-        if: ${{ secrets.MACOS_CERTIFICATE != '' }}
+        if: ${{ env.HAS_MACOS_CERTIFICATE == 'true' }}
         env:
           MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/macos/HoppieDatalinkXP/mac_x64/HoppieDatalinkXP.xpl
