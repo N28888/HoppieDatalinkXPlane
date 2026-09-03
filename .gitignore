@@ -8,4 +8,4 @@
 *.xpl
 *.zip
 *.pdb
-/**/DS_Store
+/**/.DS_Store
