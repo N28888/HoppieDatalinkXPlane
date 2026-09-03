@@ -12,10 +12,21 @@ jobs:
   windows:
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Initialize MSVC x64
+        shell: pwsh
+        run: |
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (!$vsPath) { throw 'Visual Studio C++ tools not found' }
+          & "$vsPath\Common7\Tools\Launch-VsDevShell.ps1" -Arch amd64 -HostArch amd64 -SkipAutomaticLocation
+          Get-Command cl.exe -ErrorAction Stop | Select-Object Source
+          foreach ($name in @('PATH', 'INCLUDE', 'LIB', 'LIBPATH')) {
+            "$name=$([Environment]::GetEnvironmentVariable($name))" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
 
       - name: Configure
-        run: cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOPPIE_BUILD_PLUGIN=ON -DBUILD_TESTING=ON
+        run: cmake -S . -B build/windows -G Ninja -DCMAKE_CXX_COMPILER=cl -DCMAKE_BUILD_TYPE=Release -DHOPPIE_BUILD_PLUGIN=ON -DBUILD_TESTING=ON
 
       - name: Build
         run: cmake --build build/windows --parallel
@@ -32,13 +43,13 @@ jobs:
           Compress-Archive -Path build/stage/HoppieDatalinkXP -DestinationPath build/HoppieDatalinkXP-windows-x64.zip
           git archive --format=zip --output=build/HoppieDatalinkXP-source.zip HEAD
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: HoppieDatalinkXP-windows-x64
           path: build/HoppieDatalinkXP-windows-x64.zip
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: HoppieDatalinkXP-source
           path: build/HoppieDatalinkXP-source.zip
@@ -50,7 +61,7 @@ jobs:
       # Step conditions cannot access secrets directly; expose only presence.
       HAS_MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Ninja
         run: brew install ninja
@@ -99,7 +110,7 @@ jobs:
           cmake --install build/macos --prefix build/stage
           ditto -c -k --keepParent build/stage/HoppieDatalinkXP build/HoppieDatalinkXP-macos-universal2.zip
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: HoppieDatalinkXP-macos-universal2
           path: build/HoppieDatalinkXP-macos-universal2.zip
