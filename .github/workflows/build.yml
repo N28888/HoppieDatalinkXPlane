@@ -1,0 +1,103 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release -DHOPPIE_BUILD_PLUGIN=ON -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build/windows --parallel
+
+      - name: Test
+        run: ctest --test-dir build/windows --output-on-failure
+
+      - name: Stage
+        run: cmake --install build/windows --prefix build/stage
+
+      - name: Package Windows and source
+        shell: pwsh
+        run: |
+          Compress-Archive -Path build/stage/HoppieDatalinkXP -DestinationPath build/HoppieDatalinkXP-windows-x64.zip
+          git archive --format=zip --output=build/HoppieDatalinkXP-source.zip HEAD
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HoppieDatalinkXP-windows-x64
+          path: build/HoppieDatalinkXP-windows-x64.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HoppieDatalinkXP-source
+          path: build/HoppieDatalinkXP-source.zip
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        run: brew install ninja
+
+      - name: Configure
+        run: cmake -S . -B build/macos -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 -DHOPPIE_BUILD_PLUGIN=ON -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build build/macos --parallel
+
+      - name: Test
+        run: ctest --test-dir build/macos --output-on-failure
+
+      - name: Verify Universal 2
+        run: |
+          file build/macos/HoppieDatalinkXP/mac_x64/HoppieDatalinkXP.xpl
+          ARCHS="$(lipo -archs build/macos/HoppieDatalinkXP/mac_x64/HoppieDatalinkXP.xpl)"
+          [[ "$ARCHS" == *x86_64* && "$ARCHS" == *arm64* ]]
+
+      - name: Import optional Developer ID certificate
+        if: ${{ secrets.MACOS_CERTIFICATE != '' }}
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          echo "$MACOS_CERTIFICATE" | base64 --decode > build/certificate.p12
+          security create-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -lut 21600 build.keychain
+          security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security import build/certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$MACOS_KEYCHAIN_PASSWORD" build.keychain
+          security list-keychain -d user -s build.keychain
+
+      - name: Optional Developer ID signing
+        if: ${{ secrets.MACOS_CERTIFICATE != '' }}
+        env:
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: codesign --force --options runtime --timestamp --sign "$MACOS_SIGN_IDENTITY" build/macos/HoppieDatalinkXP/mac_x64/HoppieDatalinkXP.xpl
+
+      - name: Verify signature
+        run: codesign --verify --verbose=2 build/macos/HoppieDatalinkXP/mac_x64/HoppieDatalinkXP.xpl
+
+      - name: Stage and package
+        run: |
+          cmake --install build/macos --prefix build/stage
+          ditto -c -k --keepParent build/stage/HoppieDatalinkXP build/HoppieDatalinkXP-macos-universal2.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HoppieDatalinkXP-macos-universal2
+          path: build/HoppieDatalinkXP-macos-universal2.zip
+          if-no-files-found: error

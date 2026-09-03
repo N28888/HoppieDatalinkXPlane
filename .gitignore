@@ -1,0 +1,11 @@
+/build/
+/work/
+/outputs/
+/.vs/
+/.idea/
+*.user
+*.suo
+*.xpl
+*.zip
+*.pdb
+/**/DS_Store
